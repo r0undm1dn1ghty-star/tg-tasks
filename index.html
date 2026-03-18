@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Tasks</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  /* ── CONFIG: paste your values here ── */
+  /* These are set via config.js or inline below */
+
+  :root {
+    --gold: #c9a55a;
+    --gold2: #d4b06a;
+    --bg: #0e0e0f;
+    --bg2: #161617;
+    --bg3: #1e1e1f;
+    --line: rgba(255,255,255,0.055);
+    --t1: #ece8e1;
+    --t2: rgba(200,190,175,0.55);
+    --t3: rgba(200,190,175,0.28);
+    --danger: rgba(255,90,70,0.75);
+    --safe: #4a9d6f;
+    --r: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--t1);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+    padding-bottom: env(safe-area-inset-bottom, 24px);
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 20px 14px;
+    border-bottom: 0.5px solid var(--line);
+    position: sticky; top: 0; z-index: 10;
+    background: var(--bg);
+    backdrop-filter: blur(12px);
+  }
+  .header-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  h1 { font-family: Georgia, 'Times New Roman', serif; font-size: 26px; font-weight: 400; color: var(--t1); }
+  .date-str { font-size: 11px; color: var(--t3); }
+  .prog-wrap { height: 2px; background: rgba(255,255,255,0.07); border-radius: 2px; margin-top: 12px; }
+  .prog-bar { height: 2px; background: var(--gold); border-radius: 2px; transition: width 0.4s cubic-bezier(.4,0,.2,1); }
+  .prog-label { font-size: 10.5px; color: var(--t3); margin-top: 5px; letter-spacing: 0.03em; }
+
+  /* ── Filter tabs ── */
+  .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--line); background: var(--bg); }
+  .tab { flex: 1; padding: 10px 0; font-size: 12px; color: var(--t3); background: none; border: none; cursor: pointer; transition: color 0.15s; position: relative; }
+  .tab.active { color: var(--gold); }
+  .tab.active::after { content: ''; position: absolute; bottom: -0.5px; left: 20%; right: 20%; height: 1.5px; background: var(--gold); border-radius: 2px; }
+
+  /* ── Task list ── */
+  #task-list { padding: 0; }
+
+  .section-label {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--t3); padding: 14px 20px 6px;
+  }
+
+  .task-item {
+    display: flex; align-items: center; gap: 13px;
+    padding: 11px 20px;
+    border-bottom: 0.5px solid var(--line);
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+  }
+  .task-item:active { background: rgba(255,255,255,0.02); }
+
+  .check {
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 1.5px solid rgba(201,165,90,0.35);
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s cubic-bezier(.4,0,.2,1);
+  }
+  .check.done { background: var(--gold); border-color: var(--gold); }
+  .check.done::after {
+    content: '';
+    width: 5px; height: 3.5px;
+    border-left: 1.5px solid #0e0e0f;
+    border-bottom: 1.5px solid #0e0e0f;
+    transform: rotate(-46deg);
+    margin-top: -1.5px;
+    display: block;
+  }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-name {
+    font-size: 13.5px; color: var(--t1);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: all 0.2s;
+  }
+  .task-name.done { text-decoration: line-through; color: var(--t3); }
+  .task-meta { font-size: 11px; margin-top: 2px; display: flex; gap: 8px; align-items: center; }
+
+  .del-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: none; border: none;
+    color: rgba(200,190,175,0.18); font-size: 18px; line-height: 1;
+    cursor: pointer; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+  }
+  .del-btn:active { background: rgba(255,80,60,0.12); color: rgba(255,100,80,0.8); }
+
+  /* ── Empty state ── */
+  .empty { padding: 52px 20px; text-align: center; color: var(--t3); }
+  .empty-icon { font-size: 36px; margin-bottom: 10px; opacity: 0.5; }
+  .empty p { font-size: 13px; line-height: 1.6; }
+
+  /* ── Add task panel ── */
+  .add-panel {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg2);
+    border-top: 0.5px solid var(--line);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 12px));
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+    z-index: 20;
+  }
+  .add-panel.open { transform: translateY(0); }
+
+  .add-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .add-input {
+    flex: 1; background: var(--bg3); border: 0.5px solid rgba(255,255,255,0.09);
+    border-radius: 10px; padding: 10px 14px;
+    color: var(--t1); font-size: 14px; font-family: inherit;
+    outline: none; transition: border-color 0.15s;
+  }
+  .add-input:focus { border-color: rgba(201,165,90,0.35); }
+  .add-input::placeholder { color: var(--t3); }
+  input[type=date].add-input { color-scheme: dark; flex: 0 0 140px; }
+
+  .btn-add {
+    padding: 10px 20px; border-radius: 10px; border: none;
+    background: var(--gold); color: #0e0e0f;
+    font-size: 13.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit; transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .btn-add:active { background: var(--gold2); }
+
+  /* ── Bottom bar ── */
+  .bottom-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; gap: 0;
+    background: var(--bg);
+    border-top: 0.5px solid var(--line);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 10px));
+    z-index: 15;
+  }
+  .bottom-bar.panel-open { display: none; }
+
+  .btn-new {
+    flex: 1; padding: 11px;
+    background: none; border: 0.5px solid rgba(255,255,255,0.1);
+    border-radius: 10px; color: var(--gold);
+    font-size: 13px; font-family: inherit; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background 0.12s;
+    margin-right: 8px;
+  }
+  .btn-new:active { background: rgba(255,255,255,0.04); }
+
+  .btn-publish {
+    flex: 1.4; padding: 11px;
+    background: var(--gold); border: none; border-radius: 10px;
+    color: #0e0e0f; font-size: 13px; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-publish:active { background: var(--gold2); transform: scale(0.98); }
+  .btn-publish.sent { background: var(--safe); color: #fff; }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px);
+    background: var(--bg3); border: 0.5px solid var(--line);
+    border-radius: 20px; padding: 8px 18px;
+    font-size: 12.5px; color: var(--t2);
+    opacity: 0; transition: all 0.25s; pointer-events: none;
+    white-space: nowrap; z-index: 99;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── Reminder banner ── */
+  .reminder-banner {
+    margin: 12px 16px 0;
+    background: rgba(201,165,90,0.07);
+    border: 0.5px solid rgba(201,165,90,0.25);
+    border-radius: var(--r);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 10px;
+    animation: fadeIn 0.4s ease;
+  }
+  .reminder-banner .ri { font-size: 18px; flex-shrink: 0; }
+  .reminder-banner p { font-size: 12.5px; color: var(--t2); line-height: 1.45; }
+  .reminder-banner strong { color: var(--gold); font-weight: 500; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+
+  /* spacing for bottom bar */
+  #task-list { padding-bottom: 80px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <h1>My Tasks</h1>
+    <span class="date-str" id="date-str"></span>
+  </div>
+  <div class="prog-wrap"><div class="prog-bar" id="prog-bar" style="width:0%"></div></div>
+  <div class="prog-label" id="prog-label">0 / 0 done</div>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-filter="all" onclick="setFilter('all',this)">All</button>
+  <button class="tab" data-filter="today" onclick="setFilter('today',this)">Today</button>
+  <button class="tab" data-filter="pending" onclick="setFilter('pending',this)">Pending</button>
+  <button class="tab" data-filter="done" onclick="setFilter('done',this)">Done</button>
+</div>
+
+<div id="reminder-area"></div>
+<div id="task-list"></div>
+
+<div class="bottom-bar" id="bottom-bar">
+  <button class="btn-new" onclick="openPanel()">
+    <span style="font-size:20px;font-weight:300;line-height:1">+</span> New task
+  </button>
+  <button class="btn-publish" id="pub-btn" onclick="publishChecklist()">
+    Publish ↗
+  </button>
+</div>
+
+<div class="add-panel" id="add-panel">
+  <div class="add-row">
+    <input class="add-input" type="text" id="inp-name" placeholder="Task name…" onkeydown="if(event.key==='Enter')addTask()"/>
+  </div>
+  <div class="add-row">
+    <input class="add-input" type="date" id="inp-date"/>
+    <button class="btn-add" onclick="addTask()">Add</button>
+    <button onclick="closePanel()" style="background:none;border:none;color:var(--t3);font-size:22px;cursor:pointer;padding:0 4px;">×</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG — fill these in ──────────────────────────────────────
+const BOT_TOKEN  = 'YOUR_BOT_TOKEN';   // from @BotFather
+const CHAT_ID    = 'YOUR_CHAT_ID';     // your personal chat id (get from @userinfobot)
+const GIST_ID    = 'YOUR_GIST_ID';     // GitHub Gist ID (create one empty gist)
+const GIST_TOKEN = 'YOUR_GITHUB_PAT';  // GitHub Personal Access Token (gist scope)
+const GIST_FILE  = 'tasks.json';
+// ───────────────────────────────────────────────────────────────
+
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+let tasks = [];
+let filter = 'all';
+
+// ── Date utils ──────────────────────────────────────────────────
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+function fmtDate(s) {
+  if (!s) return '';
+  const d = new Date(s + 'T00:00:00'), t = new Date();
+  t.setHours(0,0,0,0);
+  const diff = Math.round((d - t) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  if (diff === -1) return 'Yesterday';
+  if (diff < 0) return Math.abs(diff) + 'd overdue';
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+function dateColor(s, done) {
+  if (done || !s) return 'var(--t3)';
+  const d = new Date(s + 'T00:00:00'), t = new Date();
+  t.setHours(0,0,0,0);
+  const diff = Math.round((d - t) / 86400000);
+  if (diff < 0) return 'var(--danger)';
+  if (diff === 0) return 'var(--gold)';
+  return 'var(--t3)';
+}
+
+// ── Storage: GitHub Gist ─────────────────────────────────────────
+async function loadFromGist() {
+  try {
+    const r = await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      headers: { Authorization: `token ${GIST_TOKEN}` }
+    });
+    const data = await r.json();
+    const content = data.files?.[GIST_FILE]?.content;
+    if (content) tasks = JSON.parse(content);
+  } catch(e) {
+    // fallback to localStorage on error
+    const s = localStorage.getItem('tasks');
+    if (s) tasks = JSON.parse(s);
+  }
+}
+
+async function saveToGist() {
+  const body = JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(tasks) } } });
+  try {
+    await fetch(`https://api.github.com/gists/${GIST_ID}`, {
+      method: 'PATCH',
+      headers: { Authorization: `token ${GIST_TOKEN}`, 'Content-Type': 'application/json' },
+      body
+    });
+  } catch(e) {}
+  // always mirror to localStorage as offline fallback
+  localStorage.setItem('tasks', JSON.stringify(tasks));
+}
+
+// ── Render ───────────────────────────────────────────────────────
+function render() {
+  const done = tasks.filter(t => t.ok).length;
+  const total = tasks.length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+
+  document.getElementById('prog-bar').style.width = pct + '%';
+  document.getElementById('prog-label').textContent = done + ' / ' + total + ' done';
+  document.getElementById('date-str').textContent =
+    new Date().toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
+
+  let visible = [...tasks];
+  if (filter === 'today')   visible = visible.filter(t => t.date === today() && !t.ok);
+  if (filter === 'pending') visible = visible.filter(t => !t.ok);
+  if (filter === 'done')    visible = visible.filter(t => t.ok);
+
+  // sort: pending first by date, done last
+  visible.sort((a, b) => {
+    if (a.ok !== b.ok) return a.ok ? 1 : -1;
+    return (a.date || 'z').localeCompare(b.date || 'z');
+  });
+
+  const el = document.getElementById('task-list');
+  if (!visible.length) {
+    el.innerHTML = `<div class="empty">
+      <div class="empty-icon">✦</div>
+      <p>${filter === 'done' ? 'No completed tasks yet.' : 'Nothing here. Add your first task.'}</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = visible.map(t => `
+    <div class="task-item" onclick="toggle('${t.id}')">
+      <div class="check ${t.ok ? 'done' : ''}"></div>
+      <div class="task-body">
+        <div class="task-name ${t.ok ? 'done' : ''}">${escHtml(t.name)}</div>
+        ${t.date ? `<div class="task-meta" style="color:${dateColor(t.date, t.ok)}">${fmtDate(t.date)}</div>` : ''}
+      </div>
+      <button class="del-btn" onclick="event.stopPropagation();deleteTask('${t.id}')">×</button>
+    </div>
+  `).join('');
+
+  renderReminders();
+}
+
+function renderReminders() {
+  const t0 = today();
+  const overdue = tasks.filter(t => !t.ok && t.date && t.date < t0);
+  const dueToday = tasks.filter(t => !t.ok && t.date === t0);
+  const area = document.getElementById('reminder-area');
+  if (!overdue.length && !dueToday.length) { area.innerHTML = ''; return; }
+
+  let msg = '';
+  if (overdue.length) msg += `<strong>${overdue.length} overdue</strong>`;
+  if (overdue.length && dueToday.length) msg += ' · ';
+  if (dueToday.length) msg += `<strong>${dueToday.length} due today</strong>`;
+
+  area.innerHTML = `<div class="reminder-banner">
+    <span class="ri">⏰</span>
+    <p>${msg}</p>
+  </div>`;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Actions ──────────────────────────────────────────────────────
+function toggle(id) {
+  const t = tasks.find(x => x.id === id);
+  if (t) { t.ok = !t.ok; saveToGist(); render(); }
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter(x => x.id !== id);
+  saveToGist(); render();
+}
+
+function openPanel() {
+  document.getElementById('add-panel').classList.add('open');
+  document.getElementById('bottom-bar').classList.add('panel-open');
+  setTimeout(() => document.getElementById('inp-name').focus(), 60);
+}
+
+function closePanel() {
+  document.getElementById('add-panel').classList.remove('open');
+  document.getElementById('bottom-bar').classList.remove('panel-open');
+  document.getElementById('inp-name').value = '';
+  document.getElementById('inp-date').value = '';
+}
+
+function addTask() {
+  const name = document.getElementById('inp-name').value.trim();
+  if (!name) return;
+  tasks.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+    name,
+    date: document.getElementById('inp-date').value,
+    ok: false,
+    created: new Date().toISOString()
+  });
+  saveToGist(); closePanel(); render();
+}
+
+function setFilter(f, btn) {
+  filter = f;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+// ── Publish to Telegram ──────────────────────────────────────────
+async function publishChecklist() {
+  const btn = document.getElementById('pub-btn');
+  const sorted = [...tasks].sort((a, b) => {
+    if (a.ok !== b.ok) return a.ok ? 1 : -1;
+    return (a.date || 'z').localeCompare(b.date || 'z');
+  });
+
+  const done = tasks.filter(t => t.ok).length;
+  const lines = [
+    '📋 *My Tasks*',
+    `_${new Date().toLocaleDateString('en', { weekday:'long', month:'long', day:'numeric' })}_`,
+    ''
+  ];
+
+  sorted.forEach(t => {
+    const d = t.date ? ` · ${fmtDate(t.date)}` : '';
+    lines.push((t.ok ? '☑️' : '⬜') + ' ' + t.name + d);
+  });
+
+  lines.push('', `\`${done}/${tasks.length} completed\``);
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: CHAT_ID,
+        text: lines.join('\n'),
+        parse_mode: 'Markdown'
+      })
+    });
+    if (res.ok) {
+      btn.textContent = 'Sent ✓'; btn.classList.add('sent');
+      showToast('Checklist sent to Telegram');
+      setTimeout(() => { btn.textContent = 'Publish ↗'; btn.classList.remove('sent'); }, 2500);
+    }
+  } catch(e) {
+    showToast('Error: check your config');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ── Auto-send reminder on open (if due tasks exist) ──────────────
+async function checkAndNotify() {
+  const t0 = today();
+  const due = tasks.filter(t => !t.ok && t.date && t.date <= t0);
+  if (!due.length) return;
+
+  const lastNotified = localStorage.getItem('last_notified');
+  if (lastNotified === t0) return; // notify once per day
+
+  const lines = ['⏰ *Reminder — tasks due today*', ''];
+  due.forEach(t => {
+    const label = t.date < t0 ? ' _(overdue)_' : '';
+    lines.push('⬜ ' + t.name + label);
+  });
+
+  try {
+    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: CHAT_ID, text: lines.join('\n'), parse_mode: 'Markdown' })
+    });
+    localStorage.setItem('last_notified', t0);
+  } catch(e) {}
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+(async () => {
+  await loadFromGist();
+  render();
+  checkAndNotify();
+})();
+</script>
+</body>
+</html>
