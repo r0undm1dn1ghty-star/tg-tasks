@@ -1,0 +1,94 @@
+name: Task Reminders
+ 
+on:
+  schedule:
+    # Every day at 09:00 UTC (adjust to your timezone)
+    - cron: '0 9 * * *'
+    # Also check at 17:00 UTC
+    - cron: '0 17 * * *'
+  workflow_dispatch: # allow manual trigger
+ 
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check tasks and send reminder
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+        run: |
+          python3 << 'EOF'
+          import os, json, urllib.request, urllib.parse
+          from datetime import date
+ 
+          # Load tasks from GitHub Gist
+          gist_id = os.environ["GIST_ID"]
+          gist_token = os.environ["GIST_TOKEN"]
+          
+          req = urllib.request.Request(
+              f"https://api.github.com/gists/{gist_id}",
+              headers={"Authorization": f"token {gist_token}"}
+          )
+          with urllib.request.urlopen(req) as r:
+              data = json.loads(r.read())
+          
+          files = data.get("files", {})
+          tasks_file = files.get("tasks.json", {})
+          content = tasks_file.get("content", "[]")
+          tasks = json.loads(content)
+          
+          today = date.today().isoformat()
+          
+          overdue = [t for t in tasks if not t.get("ok") and t.get("date") and t["date"] < today]
+          due_today = [t for t in tasks if not t.get("ok") and t.get("date") == today]
+          
+          if not overdue and not due_today:
+              print("No due tasks today. Nothing to send.")
+              exit(0)
+          
+          lines = ["⏰ *Daily Task Reminder*", ""]
+          
+          if due_today:
+              lines.append("*Due today:*")
+              for t in due_today:
+                  lines.append(f"⬜ {t['name']}")
+              lines.append("")
+          
+          if overdue:
+              lines.append("*Overdue:*")
+              for t in overdue:
+                  lines.append(f"🔴 {t['name']}")
+              lines.append("")
+          
+          total = len(tasks)
+          done = sum(1 for t in tasks if t.get("ok"))
+          lines.append(f"`{done}/{total} completed overall`")
+          
+          # Send via Bot API
+          bot_token = os.environ["BOT_TOKEN"]
+          chat_id = os.environ["CHAT_ID"]
+          
+          payload = json.dumps({
+              "chat_id": chat_id,
+              "text": "\n".join(lines),
+              "parse_mode": "Markdown"
+          }).encode()
+          
+          req = urllib.request.Request(
+              f"https://api.telegram.org/bot{bot_token}/sendMessage",
+              data=payload,
+              headers={"Content-Type": "application/json"},
+              method="POST"
+          )
+          with urllib.request.urlopen(req) as r:
+              result = json.loads(r.read())
+          
+          if result.get("ok"):
+              print(f"Reminder sent. {len(due_today)} due today, {len(overdue)} overdue.")
+          else:
+              print("Error:", result)
+              exit(1)
+          EOF
+          
